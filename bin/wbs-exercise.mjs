@@ -19,14 +19,29 @@ if (!args.length || args.length > 2 || (args[0] === "list" && args.length > 1)) 
   process.exit(2);
 }
 
+function git(gitArgs) {
+  const result = spawnSync("git", gitArgs, { stdio: "inherit" });
+  if (result.error) throw new Error(`could not run git (${result.error.code}); install Git and try again`);
+  if (result.status !== 0) throw new Error(`could not download the exercises from ${repo}`);
+}
+
 const checkout = mkdtempSync(join(tmpdir(), "wbs-exercise-"));
 let status = 1;
 try {
-  const clone = spawnSync("git", ["clone", "--quiet", "--depth", "1", "--branch", "stable", repo, checkout], {
-    stdio: "inherit",
-  });
-  if (clone.error) throw new Error(`could not run git (${clone.error.code}); install Git and try again`);
-  if (clone.status !== 0) throw new Error(`could not download the exercises from ${repo}`);
+  // Download only what setup.mjs reads: its scripts, the shared runtime, every
+  // exercise's manifest (for the catalog), and the one exercise being set up.
+  // --filter=blob:none skips file contents until the sparse checkout asks for
+  // them, so the download stays small however many exercises the repo holds.
+  const paths = [
+    "/exercise/.claude-plugin/",
+    "/exercise/scripts/",
+    "/exercise/runtime/",
+    "/exercise/exercises/curriculum.json",
+    "/exercise/exercises/*/exercise.json",
+    ...(args[0] === "list" ? [] : [`/exercise/exercises/${args[0]}/`]),
+  ];
+  git(["clone", "--quiet", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", "stable", repo, checkout]);
+  git(["-C", checkout, "sparse-checkout", "set", "--no-cone", ...paths]);
 
   // setup.mjs resolves the target directory against the current directory, so
   // the project lands where the student ran the command, not in the checkout.
