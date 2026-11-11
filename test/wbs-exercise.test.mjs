@@ -17,20 +17,29 @@ const scratch = mkdtempSync(join(tmpdir(), "wbs-exercise-test-"));
 const repo = join(scratch, "plugin");
 
 // A stand-in `claude` that logs its arguments. `plugin update` succeeds by
-// pointing installed_plugins.json at the "updated" install, unless FAKE_CLAUDE_FAIL is set.
+// pointing installed_plugins.json at the "updated" install, unless FAKE_CLAUDE_FAIL
+// is set. It is a Node script with a wrapper per platform: `claude` for sh,
+// `claude.cmd` for the cmd.exe the launcher uses on Windows.
 const fakeBin = join(scratch, "bin");
 const claudeLog = join(scratch, "claude.log");
 mkdirSync(fakeBin);
 writeFileSync(
-  join(fakeBin, "claude"),
-  `#!/bin/sh
-echo "$*" >> "${claudeLog}"
-[ -n "$FAKE_CLAUDE_FAIL" ] && exit 1
-[ "$2" = update ] && cp "$UPDATED_PLUGINS_JSON" "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json"
-exit 0
+  join(fakeBin, "claude.mjs"),
+  `import { appendFileSync, copyFileSync } from "node:fs";
+import { join } from "node:path";
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(claudeLog)}, args.join(" ") + "\\n");
+if (process.env.FAKE_CLAUDE_FAIL) process.exit(1);
+if (args[1] === "update") {
+  copyFileSync(process.env.UPDATED_PLUGINS_JSON, join(process.env.CLAUDE_CONFIG_DIR, "plugins", "installed_plugins.json"));
+}
 `,
 );
+writeFileSync(join(fakeBin, "claude"), `#!/bin/sh\nexec node "$(dirname "$0")/claude.mjs" "$@"\n`);
 chmodSync(join(fakeBin, "claude"), 0o755);
+writeFileSync(join(fakeBin, "claude.cmd"), `@node "%~dp0claude.mjs" %*\r\n`);
+// Windows spells it Path; adding a second PATH key would be ignored there.
+const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
 
 let releasedVersion;
 const release = (version) => `data:application/json,${JSON.stringify({ version })}`;
@@ -41,7 +50,7 @@ function run(args, { config = join(scratch, "no-claude"), gitRepo = repo, env = 
     encoding: "utf8",
     env: {
       ...process.env,
-      PATH: `${fakeBin}${delimiter}${process.env.PATH}`,
+      [pathKey]: `${fakeBin}${delimiter}${process.env[pathKey]}`,
       WBS_EXERCISE_REPO: gitRepo,
       WBS_EXERCISE_RELEASE_URL: release(releasedVersion),
       CLAUDE_CONFIG_DIR: config,
@@ -124,7 +133,7 @@ try {
   assert.equal(update.status, 0, update.stderr);
   assert.match(update.stderr, /updating the Claude Code plugin from 0\.0\.1/);
   assert.match(update.stderr, new RegExp(`using the installed Claude Code plugin at .*${releasedVersion.replaceAll(".", "\\.")}`));
-  assert.deepEqual(readFileSync(claudeLog, "utf8").trim().split("\n"), [
+  assert.deepEqual(readFileSync(claudeLog, "utf8").trim().split(/\r?\n/), [
     "plugin marketplace update wbs-cs",
     "plugin update exercise@wbs-cs",
   ]);

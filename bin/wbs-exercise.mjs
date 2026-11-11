@@ -55,12 +55,13 @@ async function releasedVersion() {
 }
 
 // Runs a Claude Code command. stdin is closed so a confirmation prompt fails the
-// command instead of waiting forever; the caller then falls back to git.
+// command instead of waiting forever; the caller then falls back to git. On
+// Windows, `claude` can be claude.exe or npm's claude.cmd, and only cmd.exe
+// finds both. The arguments are fixed words, so nothing needs quoting.
 function claude(claudeArgs) {
-  const result = spawnSync("claude", claudeArgs, {
-    stdio: ["ignore", "inherit", "inherit"],
-    shell: process.platform === "win32",
-  });
+  const [command, commandArgs] =
+    process.platform === "win32" ? ["cmd.exe", ["/d", "/s", "/c", "claude", ...claudeArgs]] : ["claude", claudeArgs];
+  const result = spawnSync(command, commandArgs, { stdio: ["ignore", "inherit", "inherit"] });
   return result.status === 0;
 }
 
@@ -106,7 +107,9 @@ function download(checkout) {
     "/exercise/exercises/*/exercise.json",
     ...(args[0] === "list" ? [] : [`/exercise/exercises/${args[0]}/`]),
   ];
-  git(["clone", "--quiet", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", "stable", repo, checkout]);
+  // Git for Windows turns LF into CRLF on checkout by default, which would hand
+  // setup a pre-commit shell script that sh cannot run. Keep the repo's bytes.
+  git(["clone", "--quiet", "-c", "core.autocrlf=false", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", "stable", repo, checkout]);
   git(["-C", checkout, "sparse-checkout", "set", "--no-cone", ...paths]);
   return join(checkout, "exercise");
 }
@@ -133,6 +136,7 @@ try {
 } catch (error) {
   console.error(`wbs-exercise: ${error.message}`);
 } finally {
-  if (checkout) rmSync(checkout, { recursive: true, force: true });
+  // Retries, because Windows virus scanners briefly lock freshly written files.
+  if (checkout) rmSync(checkout, { recursive: true, force: true, maxRetries: 5 });
 }
 process.exit(status);

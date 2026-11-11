@@ -15,7 +15,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
@@ -30,10 +30,22 @@ delete baseEnv.WBS_EXERCISE_REPO;
 delete baseEnv.WBS_EXERCISE_RELEASE_URL;
 
 function run(command, args, { cwd = scratch, env = {} } = {}) {
-  const result = spawnSync(command, args, { cwd, encoding: "utf8", env: { ...baseEnv, ...env }, shell: windows });
+  const result = spawnSync(command, args, { cwd, encoding: "utf8", env: { ...baseEnv, ...env } });
   if (result.error) throw result.error;
   return result;
 }
+
+// npm and npx are .cmd files on Windows, which need a shell, and a shell
+// splits paths with spaces. Under `npm run`, npm_execpath names npm's own
+// script, so both run through node directly on every platform.
+const npmCli = process.env.npm_execpath;
+const npm = (args, options) => (npmCli ? run(process.execPath, [npmCli, ...args], options) : run("npm", args, options));
+const npx = (args, options) =>
+  npmCli ? run(process.execPath, [join(dirname(npmCli), "npx-cli.js"), ...args], options) : run("npx", args, options);
+
+// cmd.exe finds claude.exe and npm's claude.cmd alike; the arguments are fixed words.
+const claudeCli = (args, options) =>
+  windows ? run("cmd.exe", ["/d", "/s", "/c", "claude", ...args], options) : run("claude", args, options);
 
 function ok(result, what) {
   assert.equal(result.status, 0, `${what} failed:\n${result.stdout}\n${result.stderr}`);
@@ -42,7 +54,7 @@ function ok(result, what) {
 
 let tarball;
 function launch(args, { cwd, config, env = {} }) {
-  return run("npx", ["--yes", "--package", tarball, "wbs-exercise", ...args], { cwd, env: { CLAUDE_CONFIG_DIR: config, ...env } });
+  return npx(["--yes", "--package", tarball, "wbs-exercise", ...args], { cwd, env: { CLAUDE_CONFIG_DIR: config, ...env } });
 }
 
 // What a project's first commit contains, as one hash: two projects with the
@@ -58,6 +70,12 @@ function files(project) {
 // Asserts that `project` matches the reference project, and on a mismatch
 // names the files that differ rather than two opaque hashes.
 function assertSameProject(project, reference, what) {
+  // git compares contents after line-ending conversion, so a CRLF hook in the
+  // working folder would pass the tree check and still fail to run under sh.
+  assert.ok(
+    !readFileSync(join(project, ".claude", "githooks", "pre-commit"), "utf8").includes("\r"),
+    `${what}: the pre-commit hook has Windows line endings, which sh cannot run`,
+  );
   if (tree(project) === tree(reference)) {
     assert.equal(
       execFileSync("git", ["-C", project, "config", "--get", "core.hooksPath"], { encoding: "utf8" }).trim(),
@@ -94,13 +112,14 @@ const step = (name) => console.log(`- ${name}`);
 
 try {
   step("packing the launcher");
-  const packed = ok(run("npm", ["pack", "--silent", "--pack-destination", scratch], { cwd: packageRoot }), "npm pack");
+  const packed = ok(npm(["pack", "--silent", "--pack-destination", scratch], { cwd: packageRoot }), "npm pack");
   tarball = join(scratch, packed.stdout.trim().split("\n").at(-1));
 
   // The reference: the plugin's own setup.mjs from a full clone of stable.
   step("building reference projects with the plugin's own setup.mjs");
   const plugin = join(scratch, "plugin");
-  ok(run("git", ["clone", "--quiet", "--depth", "1", "--branch", "stable", repo, plugin]), "git clone");
+  // Repository bytes, as the launcher checks them out; see its clone comment.
+  ok(run("git", ["clone", "--quiet", "-c", "core.autocrlf=false", "--depth", "1", "--branch", "stable", repo, plugin]), "git clone");
   const setup = join(plugin, "exercise", "scripts", "setup.mjs");
   const referenceList = ok(run(process.execPath, [setup, "list"]), "setup list").stdout;
   const all = referenceList.trim().split("\n").map((line) => line.split("\t")[0]);
@@ -125,7 +144,12 @@ try {
     console.log(`  ok ${id}`);
   }
 
-  const claude = spawnSync("claude", ["--version"], { encoding: "utf8", shell: windows });
+  let claude;
+  try {
+    claude = claudeCli(["--version"]);
+  } catch {
+    claude = { status: 1 };
+  }
   if (claude.status !== 0) {
     if (process.env.E2E_REQUIRE_CLAUDE) assert.fail("E2E_REQUIRE_CLAUDE is set, but `claude` is not on PATH");
     console.log("SKIP installed and update routes: no `claude` CLI on PATH");
@@ -135,8 +159,8 @@ try {
     const config = join(scratch, "claude");
     const env = { CLAUDE_CONFIG_DIR: config };
     step(`installing the real plugin with ${claude.stdout.trim()}`);
-    ok(run("claude", ["plugin", "marketplace", "add", "WebDev-WBSCodingSchool/claude-code-plugin#stable"], { env }), "marketplace add");
-    ok(run("claude", ["plugin", "install", "exercise@wbs-cs"], { env }), "plugin install");
+    ok(claudeCli(["plugin", "marketplace", "add", "WebDev-WBSCodingSchool/claude-code-plugin#stable"], { env }), "marketplace add");
+    ok(claudeCli(["plugin", "install", "exercise@wbs-cs"], { env }), "plugin install");
     const released = installedPlugins(config).plugins["exercise@wbs-cs"][0].version;
 
     // A repository that does not exist proves this route downloads nothing.
