@@ -46,5 +46,7 @@ It needs the network, takes about a minute, and leaves nothing behind.
 `E2E_EXERCISES=movie-diary,art-explorer` limits it to some exercises, and
 `E2E_REQUIRE_CLAUDE=1` makes a missing `claude` a failure instead of a skip.
 
-`.github/workflows/test.yml` runs both tests on every push, weekly, and on
-demand, on Linux, macOS and Windows (in Git Bash).
+`.github/workflows/test.yml` runs both tests on every push and on demand, on Linux, macOS and Windows (in Git Bash).
+The plugin repository's release workflow also runs `npm test` against each
+release candidate, so a plugin release that would break the launcher fails
+before it moves `stable`.

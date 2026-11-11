@@ -1,7 +1,8 @@
-# Runs the unit test and the end-to-end test. The weekly run catches a change on
-# the plugin's `stable` branch that breaks the launcher, for example setup.mjs
-# starting to read a file the sparse download leaves out, even when nothing in
-# this repository changed.
+# Runs the unit test and the end-to-end test whenever the launcher changes, and
+# on demand. There is no schedule: the plugin's release workflow runs the unit
+# test against each release before it reaches `stable`, which is the only way
+# the plugin can break this launcher. (GitHub would also switch a schedule off
+# after 60 days without activity in this repository.)
 
 name: Test
 
@@ -9,8 +10,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * 1"
 
 permissions:
   contents: read
