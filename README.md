@@ -36,3 +36,15 @@ by default `../wbs-cs`. Set `PLUGIN_CHECKOUT` to use another path. The test
 uses a fake `claude` command and its own `CLAUDE_CONFIG_DIR`, so it never touches
 a plugin installed on your machine, and it needs no network. It needs a POSIX
 shell for the fake `claude`.
+
+`npm run test:e2e` tests what students actually run. It packs the package, runs
+it through `npx` against the real `stable` branch, and checks that each project
+it creates is file-for-file identical to the one the plugin's own `setup.mjs`
+creates. With `claude` on PATH, it also installs the real plugin into a
+throwaway `CLAUDE_CONFIG_DIR` and tests the installed, offline and update routes.
+It needs the network, takes about a minute, and leaves nothing behind.
+`E2E_EXERCISES=movie-diary,art-explorer` limits it to some exercises, and
+`E2E_REQUIRE_CLAUDE=1` makes a missing `claude` a failure instead of a skip.
+
+`.github/workflows/test.yml` runs both tests on every push, weekly, and on
+demand, on Linux and macOS.

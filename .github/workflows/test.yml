@@ -1,0 +1,49 @@
+# Runs the unit test and the end-to-end test. The weekly run catches a change on
+# the plugin's `stable` branch that breaks the launcher, for example setup.mjs
+# starting to read a file the sparse download leaves out, even when nothing in
+# this repository changed.
+
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # The unit test copies a local plugin checkout instead of using GitHub.
+      - uses: actions/checkout@v5
+        with:
+          repository: WebDev-WBSCodingSchool/claude-code-plugin
+          path: plugin
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      - name: Unit test
+        run: npm test
+        env:
+          PLUGIN_CHECKOUT: ${{ github.workspace }}/plugin
+
+      - name: End-to-end test
+        run: npm run test:e2e
+        env:
+          E2E_REQUIRE_CLAUDE: "1"

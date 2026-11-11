@@ -10,7 +10,8 @@
     "bin"
   ],
   "scripts": {
-    "test": "node test/wbs-exercise.test.mjs"
+    "test": "node test/wbs-exercise.test.mjs",
+    "test:e2e": "node test/e2e.test.mjs"
   },
   "engines": {
     "node": ">=22"
