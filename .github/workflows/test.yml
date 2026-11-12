@@ -7,7 +7,9 @@
 name: Test
 
 on:
+  # Only main, because a push to a PR branch already runs through pull_request.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -49,4 +51,4 @@ jobs:
       - name: End-to-end test
         run: npm run test:e2e
         env:
-          E2E_REQUIRE_CLAUDE: "1"
+          E2E_REQUIRE_CLAUDE: '1'

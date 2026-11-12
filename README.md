@@ -20,9 +20,9 @@ Where the script comes from depends on what is installed:
   `claude plugin marketplace update wbs-cs` and
   `claude plugin update exercise@wbs-cs`. Offline, it uses the installed version
   as it is.
-- If the plugin is not installed, the update fails, or the installed version
-  lacks the exercise, the command downloads only the files it needs from the
-  `stable` branch of
+- If the plugin is not installed, the update fails, or the release could not be
+  checked and the installed version lacks the exercise, the command downloads
+  only the files it needs from the `stable` branch of
   [WebDev-WBSCodingSchool/claude-code-plugin](https://github.com/WebDev-WBSCodingSchool/claude-code-plugin).
 
 This package contains only the launcher. New or changed exercises reach students
@@ -46,7 +46,7 @@ It needs the network, takes about a minute, and leaves nothing behind.
 `E2E_EXERCISES=movie-diary,art-explorer` limits it to some exercises, and
 `E2E_REQUIRE_CLAUDE=1` makes a missing `claude` a failure instead of a skip.
 
-`.github/workflows/test.yml` runs both tests on every push and on demand, on
+`.github/workflows/test.yml` runs both tests on every push to `main`, on pull requests and on demand, on
 Linux, macOS and Windows (in Git Bash). There is no schedule. Instead, the
 plugin repository's release workflow runs `npm test` against each release
 candidate, so a plugin release that would break the launcher fails before it

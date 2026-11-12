@@ -25,23 +25,23 @@ if (!args.length || args.length > 2 || (args[0] === "list" && args.length > 1)) 
   process.exit(2);
 }
 
-// The installed plugin's folder, or undefined. installed_plugins.json is Claude
-// Code's own bookkeeping, not a public format, so anything unexpected in it
-// means "not installed" and the git route takes over.
+// The installed plugin as { path, version }, or undefined. installed_plugins.json
+// is Claude Code's own bookkeeping, not a public format, so anything unexpected
+// in it or in the install, such as an unreadable plugin.json, means "not
+// installed" and the git route takes over.
 function installedPlugin() {
   try {
     const config = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
     const installed = JSON.parse(readFileSync(join(config, "plugins", "installed_plugins.json"), "utf8"));
-    return installed.plugins["exercise@wbs-cs"]
+    const path = installed.plugins["exercise@wbs-cs"]
       .map(({ installPath }) => installPath)
       .find((path) => existsSync(join(path, "scripts", "setup.mjs")) && existsSync(join(path, ".claude-plugin", "plugin.json")));
+    if (!path) return undefined;
+    const { version } = JSON.parse(readFileSync(join(path, ".claude-plugin", "plugin.json"), "utf8"));
+    return { path, version };
   } catch {
     return undefined;
   }
-}
-
-function version(plugin) {
-  return JSON.parse(readFileSync(join(plugin, ".claude-plugin", "plugin.json"), "utf8")).version;
 }
 
 // The version on `stable`, or undefined when it cannot be read, for example offline.
@@ -66,7 +66,8 @@ function claude(claudeArgs) {
 }
 
 // The installed plugin, updated to the released version when it is behind, or
-// undefined when there is no install or the update did not work.
+// undefined when there is no install or the update did not work. `current` is
+// true when the install is known to match `stable`.
 async function currentPlugin() {
   const plugin = installedPlugin();
   if (!plugin) return undefined;
@@ -75,14 +76,14 @@ async function currentPlugin() {
     console.error("wbs-exercise: could not check for a newer release; using the installed plugin as it is");
     return plugin;
   }
-  if (version(plugin) === released) return plugin;
+  if (plugin.version === released) return { ...plugin, current: true };
 
-  console.error(`wbs-exercise: updating the Claude Code plugin from ${version(plugin)} to ${released}`);
+  console.error(`wbs-exercise: updating the Claude Code plugin from ${plugin.version} to ${released}`);
   const updated =
     claude(["plugin", "marketplace", "update", "wbs-cs"]) && claude(["plugin", "update", "exercise@wbs-cs"]) && installedPlugin();
-  if (updated && version(updated) === released) {
+  if (updated?.version === released) {
     console.error("wbs-exercise: restart any open Claude Code session to use the new version there");
-    return updated;
+    return { ...updated, current: true };
   }
   console.error("wbs-exercise: the update did not work; downloading the exercises instead");
   return undefined;
@@ -117,22 +118,24 @@ function download(checkout) {
 let checkout;
 let status = 1;
 try {
-  let plugin = await currentPlugin();
-  // An exercise newer than the installed plugin is only on GitHub.
-  if (plugin && args[0] !== "list" && !existsSync(join(plugin, "exercises", args[0], "exercise.json"))) {
-    plugin = undefined;
+  const plugin = await currentPlugin();
+  let root = plugin?.path;
+  // An exercise newer than an unchecked install is only on GitHub. An install
+  // that matches `stable` has them all, so its setup.mjs reports the unknown name.
+  if (plugin && !plugin.current && args[0] !== "list" && !existsSync(join(root, "exercises", args[0], "exercise.json"))) {
+    root = undefined;
   }
-  if (plugin) {
-    console.error(`wbs-exercise: using the installed Claude Code plugin at ${plugin}`);
+  if (root) {
+    console.error(`wbs-exercise: using the installed Claude Code plugin at ${root}`);
   } else {
     checkout = mkdtempSync(join(tmpdir(), "wbs-exercise-"));
-    plugin = download(checkout);
+    root = download(checkout);
   }
 
   // setup.mjs resolves the target directory against the current directory, so
   // the project lands where the student ran the command, not in the plugin.
   const command = args[0] === "list" ? ["list"] : ["setup", ...args];
-  status = spawnSync(process.execPath, [join(plugin, "scripts", "setup.mjs"), ...command], { stdio: "inherit" }).status ?? 1;
+  status = spawnSync(process.execPath, [join(root, "scripts", "setup.mjs"), ...command], { stdio: "inherit" }).status ?? 1;
 } catch (error) {
   console.error(`wbs-exercise: ${error.message}`);
 } finally {

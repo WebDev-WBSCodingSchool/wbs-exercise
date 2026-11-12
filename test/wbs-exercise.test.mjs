@@ -106,20 +106,23 @@ try {
   assert.ok(existsSync(join(scratch, "art", ".gitignore")));
   assert.ok(!existsSync(claudeLog), "an up-to-date install must not be updated");
 
-  // An exercise the installed plugin lacks comes from git instead.
-  const newer = run(["movie-diary", "diary-2"], installed);
-  assert.equal(newer.status, 0, newer.stderr);
-  assert.doesNotMatch(newer.stderr, /using the installed/);
-  assert.ok(existsSync(join(scratch, "diary-2", ".gitignore")));
+  // An install that matches stable has every exercise, so a name it lacks is
+  // reported as unknown at once, without a download.
+  const typo = run(["movie-diary", "diary-typo"], { ...installed, gitRepo: join(scratch, "missing") });
+  assert.equal(typo.status, 1);
+  assert.match(typo.stderr, /unknown exercise "movie-diary"/);
 
   // Offline: the release cannot be checked, so the install is used as it is.
-  const offline = run(["art-explorer", "art-offline"], {
-    ...installed,
-    gitRepo: join(scratch, "missing"),
-    env: { WBS_EXERCISE_RELEASE_URL: "http://127.0.0.1:9/plugin.json" },
-  });
+  const unreachable = { WBS_EXERCISE_RELEASE_URL: "http://127.0.0.1:9/plugin.json" };
+  const offline = run(["art-explorer", "art-offline"], { ...installed, gitRepo: join(scratch, "missing"), env: unreachable });
   assert.equal(offline.status, 0, offline.stderr);
   assert.match(offline.stderr, /could not check for a newer release/);
+
+  // An unchecked install may be behind, so an exercise it lacks comes from git.
+  const newer = run(["movie-diary", "diary-2"], { ...installed, env: unreachable });
+  assert.equal(newer.status, 0, newer.stderr);
+  assert.doesNotMatch(newer.stderr, /using the installed Claude Code plugin/);
+  assert.ok(existsSync(join(scratch, "diary-2", ".gitignore")));
 
   // An older install is updated through Claude Code, and the updated copy runs.
   writeFileSync(pluginsJson, fakeInstall("0.0.1"));
@@ -144,6 +147,14 @@ try {
   assert.equal(failed.status, 0, failed.stderr);
   assert.match(failed.stderr, /update did not work; downloading/);
   assert.ok(existsSync(join(scratch, "art-failed", ".gitignore")));
+
+  // An install with an unreadable plugin.json, as an interrupted update can
+  // leave, falls back to git.
+  writeFileSync(pluginsJson, fakeInstall(releasedVersion));
+  writeFileSync(join(scratch, "claude", "plugins", "cache", "wbs-cs", "exercise", releasedVersion, ".claude-plugin", "plugin.json"), "");
+  const broken = run(["art-explorer", "art-broken"], installed);
+  assert.equal(broken.status, 0, broken.stderr);
+  assert.doesNotMatch(broken.stderr, /using the installed/);
 
   // An unreadable installed_plugins.json falls back to git, too.
   writeFileSync(pluginsJson, "not json");
