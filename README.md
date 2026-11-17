@@ -4,9 +4,9 @@ Sets up a WBS Coding School exercise from a terminal, without Claude Code. You
 need Node.js 22 or newer and Git.
 
 ```sh
-npx wbs-exercise list
-npx wbs-exercise art-explorer
-npx wbs-exercise art-explorer ./my-art-explorer
+npx @wbscodingschool/exercise list
+npx @wbscodingschool/exercise art-explorer
+npx @wbscodingschool/exercise art-explorer ./my-art-explorer
 ```
 
 The command runs the same setup script as the plugin's `/exercise:setup`, so it

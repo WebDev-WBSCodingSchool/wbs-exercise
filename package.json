@@ -1,5 +1,5 @@
 {
-  "name": "wbs-exercise",
+  "name": "@wbscodingschool/exercise",
   "version": "0.1.0",
   "description": "Set up WBS Coding School exercises from a terminal.",
   "type": "module",
@@ -12,6 +12,13 @@
   "scripts": {
     "test": "node test/wbs-exercise.test.mjs",
     "test:e2e": "node test/e2e.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WebDev-WBSCodingSchool/wbs-exercise.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22"

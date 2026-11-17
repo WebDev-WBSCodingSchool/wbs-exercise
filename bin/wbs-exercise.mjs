@@ -20,8 +20,8 @@ const releaseUrl =
 const args = process.argv.slice(2);
 
 if (!args.length || args.length > 2 || (args[0] === "list" && args.length > 1)) {
-  console.error("usage: npx wbs-exercise list");
-  console.error("       npx wbs-exercise <exercise-id> [target-directory]");
+  console.error("usage: npx @wbscodingschool/exercise list");
+  console.error("       npx @wbscodingschool/exercise <exercise-id> [target-directory]");
   process.exit(2);
 }
 
