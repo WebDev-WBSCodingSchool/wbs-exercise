@@ -160,6 +160,26 @@ try {
   writeFileSync(pluginsJson, "not json");
   assert.equal(run(["art-explorer", "art-2"], installed).status, 0);
 
+  // install-skills copies the portable skills under wbs- names into the
+  // agent's home folder, and a second run replaces the first copy.
+  const home = join(scratch, "home");
+  const homeEnv = { env: { HOME: home, USERPROFILE: home } };
+  const skills = join(home, ".agents", "skills");
+  mkdirSync(join(skills, "wbs-setup"), { recursive: true });
+  writeFileSync(join(skills, "wbs-setup", "stale.txt"), "");
+  const codex = run(["install-skills", "codex"], homeEnv);
+  assert.equal(codex.status, 0, codex.stderr);
+  for (const name of ["setup", "list", "custom"]) {
+    assert.match(readFileSync(join(skills, `wbs-${name}`, "SKILL.md"), "utf8"), new RegExp(`^name: wbs-${name}$`, "m"));
+  }
+  assert.ok(existsSync(join(skills, "wbs-custom", "practice-tutor.md")));
+  assert.ok(!existsSync(join(skills, "wbs-setup", "stale.txt")));
+  assert.ok(!existsSync(join(skills, "wbs-lms-chrome")));
+  assert.equal(run(["install-skills", "antigravity"], homeEnv).status, 0);
+  assert.ok(existsSync(join(home, ".gemini", "config", "skills", "wbs-list", "SKILL.md")));
+  assert.equal(run(["install-skills"]).status, 2);
+  assert.equal(run(["install-skills", "cursor"]).status, 2);
+
   console.log("wbs-exercise ok");
 } finally {
   rmSync(scratch, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 {
   "name": "@wbscodingschool/exercise",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Set up WBS Coding School exercises from a terminal.",
   "type": "module",
   "bin": {
