@@ -8,7 +8,7 @@
 // the branch the plugin installs from. This package holds no exercises itself,
 // so it never needs a new release when the exercises change.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,9 +19,21 @@ const releaseUrl =
   "https://raw.githubusercontent.com/WebDev-WBSCodingSchool/claude-code-plugin/stable/exercise/.claude-plugin/plugin.json";
 const args = process.argv.slice(2);
 
-if (!args.length || args.length > 2 || (args[0] === "list" && args.length > 1)) {
+// Where each agent reads user-level skills, under the home folder.
+const skillFolders = { codex: [".agents", "skills"], antigravity: [".gemini", "config", "skills"] };
+// The plugin skills that work without Claude Code. lms-chrome needs Claude in Chrome.
+const portableSkills = ["setup", "list", "custom"];
+const installSkills = args[0] === "install-skills";
+
+if (
+  !args.length ||
+  args.length > 2 ||
+  (args[0] === "list" && args.length > 1) ||
+  (installSkills && !Object.hasOwn(skillFolders, args[1] ?? ""))
+) {
   console.error("usage: npx @wbscodingschool/exercise list");
   console.error("       npx @wbscodingschool/exercise <exercise-id> [target-directory]");
+  console.error("       npx @wbscodingschool/exercise install-skills <codex|antigravity>");
   process.exit(2);
 }
 
@@ -97,10 +109,11 @@ function git(gitArgs) {
 
 // Downloads only what setup.mjs reads: its scripts, the shared runtime, every
 // exercise's manifest (for the catalog), and the one exercise being set up.
+// For install-skills, only the skills it copies.
 // --filter=blob:none skips file contents until the sparse checkout asks for
 // them, so the download stays small however many exercises the repo holds.
 function download(checkout) {
-  const paths = [
+  const paths = installSkills ? portableSkills.map((name) => `/exercise/skills/${name}/`) : [
     "/exercise/.claude-plugin/",
     "/exercise/scripts/",
     "/exercise/runtime/",
@@ -115,27 +128,49 @@ function download(checkout) {
   return join(checkout, "exercise");
 }
 
+// Copies the portable skills from `stable` into the agent's skills folder as
+// wbs-<name>, so they cannot clash with, or overwrite, another skill called
+// setup or list. The frontmatter name must match the folder name. Running it
+// again replaces the earlier copy, which is how students update.
+function copySkills(root) {
+  const target = join(homedir(), ...skillFolders[args[1]]);
+  for (const name of portableSkills) {
+    const dest = join(target, `wbs-${name}`);
+    rmSync(dest, { recursive: true, force: true, maxRetries: 5 });
+    cpSync(join(root, "skills", name), dest, { recursive: true });
+    const skill = join(dest, "SKILL.md");
+    writeFileSync(skill, readFileSync(skill, "utf8").replace(/^name: .*$/m, `name: wbs-${name}`));
+  }
+  console.error(`wbs-exercise: installed ${portableSkills.map((name) => `wbs-${name}`).join(", ")} in ${target}`);
+}
+
 let checkout;
 let status = 1;
 try {
-  const plugin = await currentPlugin();
-  let root = plugin?.path;
-  // An exercise newer than an unchecked install is only on GitHub. An install
-  // that matches `stable` has them all, so its setup.mjs reports the unknown name.
-  if (plugin && !plugin.current && args[0] !== "list" && !existsSync(join(root, "exercises", args[0], "exercise.json"))) {
-    root = undefined;
-  }
-  if (root) {
-    console.error(`wbs-exercise: using the installed Claude Code plugin at ${root}`);
-  } else {
+  if (installSkills) {
     checkout = mkdtempSync(join(tmpdir(), "wbs-exercise-"));
-    root = download(checkout);
-  }
+    copySkills(download(checkout));
+    status = 0;
+  } else {
+    const plugin = await currentPlugin();
+    let root = plugin?.path;
+    // An exercise newer than an unchecked install is only on GitHub. An install
+    // that matches `stable` has them all, so its setup.mjs reports the unknown name.
+    if (plugin && !plugin.current && args[0] !== "list" && !existsSync(join(root, "exercises", args[0], "exercise.json"))) {
+      root = undefined;
+    }
+    if (root) {
+      console.error(`wbs-exercise: using the installed Claude Code plugin at ${root}`);
+    } else {
+      checkout = mkdtempSync(join(tmpdir(), "wbs-exercise-"));
+      root = download(checkout);
+    }
 
-  // setup.mjs resolves the target directory against the current directory, so
-  // the project lands where the student ran the command, not in the plugin.
-  const command = args[0] === "list" ? ["list"] : ["setup", ...args];
-  status = spawnSync(process.execPath, [join(root, "scripts", "setup.mjs"), ...command], { stdio: "inherit" }).status ?? 1;
+    // setup.mjs resolves the target directory against the current directory, so
+    // the project lands where the student ran the command, not in the plugin.
+    const command = args[0] === "list" ? ["list"] : ["setup", ...args];
+    status = spawnSync(process.execPath, [join(root, "scripts", "setup.mjs"), ...command], { stdio: "inherit" }).status ?? 1;
+  }
 } catch (error) {
   console.error(`wbs-exercise: ${error.message}`);
 } finally {

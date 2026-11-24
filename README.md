@@ -25,6 +25,19 @@ Where the script comes from depends on what is installed:
   only the files it needs from the `stable` branch of
   [WebDev-WBSCodingSchool/claude-code-plugin](https://github.com/WebDev-WBSCodingSchool/claude-code-plugin).
 
+To use the exercise skills in Codex or Google Antigravity, install them into
+that agent's skills folder:
+
+```sh
+npx @wbscodingschool/exercise install-skills codex
+npx @wbscodingschool/exercise install-skills antigravity
+```
+
+This copies `setup`, `list` and `custom` from the `stable` branch as `wbs-setup`,
+`wbs-list` and `wbs-custom`, into `~/.agents/skills` for Codex or
+`~/.gemini/config/skills` for Antigravity. Running it again replaces them with
+the current release. `lms-chrome` needs Claude in Chrome and is left out.
+
 This package contains only the launcher. New or changed exercises reach students
 through the plugin repository's release, not through a new version of this
 package.
